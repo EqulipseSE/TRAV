@@ -70,9 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     leg_p.add_argument("--avd", type=int, required=True, help="Avdelningsnummer (1-baserat).")
     leg_p.add_argument("--game-type", choices=list(GAME_TYPES), default=None)
     leg_p.add_argument("--track", default=None, help="Filtrera på bana om flera omgångar matchar.")
-    leg_p.add_argument("--races-csv", type=str, default=str(RACES_CSV))
-    leg_p.add_argument("--distance-tolerance", type=int, default=150)
-    leg_p.add_argument("--field-size-tolerance", type=int, default=2)
+    leg_p.add_argument("--raw-dir", type=str, default=str(RAW_DIR))
 
     status_p = sub.add_parser("status", help="Visa hur mycket historisk data som finns inläst.")
     status_p.add_argument("--races-csv", type=str, default=str(RACES_CSV))
@@ -144,13 +142,11 @@ def main(argv: list[str] | None = None) -> None:
         print(bucket_df.to_string(index=False))
     elif args.command == "analyze-leg":
         report = leg_analysis.build_leg_report(
-            Path(args.races_csv),
+            Path(args.raw_dir),
             date_str=args.date,
             avd=args.avd,
             game_type=args.game_type,
             track_name=args.track,
-            distance_tolerance=args.distance_tolerance,
-            field_size_tolerance=args.field_size_tolerance,
         )
         print(leg_analysis.format_report(report))
     elif args.command == "status":
