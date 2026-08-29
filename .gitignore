@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Downloaded raw JSON and generated CSVs are per-environment data, not code.
+data/raw/*.json
+data/processed/*.csv
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+.streamlit/secrets.toml

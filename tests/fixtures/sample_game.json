@@ -1,0 +1,186 @@
+{
+  "@type": ".Game",
+  "id": "V75_2024-01-06_1_1",
+  "status": "results",
+  "type": "V75",
+  "pools": {
+    "V75": {
+      "@type": ".MarkingBetPool",
+      "id": "V75_2024-01-06_1_1",
+      "status": "results",
+      "turnover": 12345600
+    }
+  },
+  "races": [
+    {
+      "id": "2024-01-06_1_1",
+      "name": "Testlopp 1",
+      "date": "2024-01-06",
+      "number": 1,
+      "distance": 1640,
+      "startMethod": "auto",
+      "scheduledStartTime": "2024-01-06T13:00:00",
+      "sport": "trot",
+      "track": {"id": 1, "name": "Testbanan", "condition": "normal", "countryCode": "SE"},
+      "status": "results",
+      "result": {"scratchings": []},
+      "starts": [
+        {
+          "id": "2024-01-06_1_1_1",
+          "number": 1,
+          "postPosition": 1,
+          "distance": 1640,
+          "horse": {
+            "id": 101,
+            "name": "Favorithästen",
+            "age": 5,
+            "sex": "stallion",
+            "shoes": {"reported": true, "front": {"hasShoe": false, "changed": false}, "back": {"hasShoe": true, "changed": false}},
+            "sulky": {"reported": true, "type": {"code": "VA", "text": "Vanlig"}}
+          },
+          "driver": {"firstName": "Anna", "lastName": "Andersson", "shortName": "And An"},
+          "pools": {
+            "vinnare": {"odds": 180},
+            "V75": {"betDistribution": 4500}
+          },
+          "result": {"place": 1, "finishOrder": 1, "finalOdds": 1.8, "startNumber": 1}
+        },
+        {
+          "id": "2024-01-06_1_1_2",
+          "number": 2,
+          "postPosition": 2,
+          "distance": 1640,
+          "horse": {
+            "id": 102,
+            "name": "Utmanaren",
+            "age": 6,
+            "sex": "mare",
+            "shoes": {"reported": true, "front": {"hasShoe": true, "changed": false}, "back": {"hasShoe": true, "changed": false}},
+            "sulky": {"reported": true, "type": {"code": "VA", "text": "Vanlig"}}
+          },
+          "driver": {"firstName": "Bo", "lastName": "Bengtsson", "shortName": "Ben Bo"},
+          "pools": {
+            "vinnare": {"odds": 450},
+            "V75": {"betDistribution": 2200}
+          },
+          "result": {"place": 2, "finishOrder": 2, "finalOdds": 4.5, "startNumber": 2}
+        },
+        {
+          "id": "2024-01-06_1_1_3",
+          "number": 3,
+          "postPosition": 1,
+          "distance": 1660,
+          "horse": {
+            "id": 103,
+            "name": "Tredjehasten",
+            "age": 4,
+            "sex": "gelding",
+            "shoes": {"reported": false},
+            "sulky": {"reported": false}
+          },
+          "driver": {"firstName": "Cecilia", "lastName": "Carlsson", "shortName": "Car Ce"},
+          "pools": {
+            "vinnare": {"odds": 1200},
+            "V75": {"betDistribution": 900}
+          },
+          "result": {"place": 3, "finishOrder": 3, "finalOdds": 12.0, "startNumber": 3}
+        }
+      ]
+    },
+    {
+      "id": "2024-01-06_1_2",
+      "name": "Testlopp 2 (favoritfall)",
+      "date": "2024-01-06",
+      "number": 2,
+      "distance": 2140,
+      "startMethod": "volte",
+      "scheduledStartTime": "2024-01-06T13:20:00",
+      "sport": "trot",
+      "track": {"id": 1, "name": "Testbanan", "condition": "normal", "countryCode": "SE"},
+      "status": "results",
+      "result": {"scratchings": [4]},
+      "starts": [
+        {
+          "id": "2024-01-06_1_2_1",
+          "number": 1,
+          "postPosition": 1,
+          "distance": 2140,
+          "horse": {
+            "id": 201,
+            "name": "StorFavoriten",
+            "age": 7,
+            "sex": "stallion",
+            "shoes": {"reported": true, "front": {"hasShoe": false, "changed": false}, "back": {"hasShoe": false, "changed": true}},
+            "sulky": {"reported": true, "type": {"code": "VA", "text": "Vanlig"}}
+          },
+          "driver": {"firstName": "David", "lastName": "Dahl", "shortName": "Dah Da"},
+          "pools": {
+            "vinnare": {"odds": 150},
+            "V75": {"betDistribution": 5200}
+          },
+          "result": {"place": 4, "finishOrder": 4, "finalOdds": 3.2, "startNumber": 1}
+        },
+        {
+          "id": "2024-01-06_1_2_2",
+          "number": 2,
+          "postPosition": 2,
+          "distance": 2140,
+          "horse": {
+            "id": 202,
+            "name": "Skräll Sam",
+            "age": 5,
+            "sex": "gelding",
+            "shoes": {"reported": true, "front": {"hasShoe": true, "changed": false}, "back": {"hasShoe": true, "changed": false}},
+            "sulky": {"reported": true, "type": {"code": "AM", "text": "Amerikansk"}}
+          },
+          "driver": {"firstName": "Erik", "lastName": "Ek", "shortName": "Ek Er"},
+          "pools": {
+            "vinnare": {"odds": 2500},
+            "V75": {"betDistribution": 700}
+          },
+          "result": {"place": 1, "finishOrder": 1, "finalOdds": 25.0, "startNumber": 2}
+        },
+        {
+          "id": "2024-01-06_1_2_3",
+          "number": 3,
+          "postPosition": 3,
+          "distance": 2140,
+          "horse": {
+            "id": 203,
+            "name": "Medioker Mira",
+            "age": 6,
+            "sex": "mare",
+            "shoes": {"reported": true, "front": {"hasShoe": true, "changed": false}, "back": {"hasShoe": true, "changed": false}},
+            "sulky": {"reported": true, "type": {"code": "VA", "text": "Vanlig"}}
+          },
+          "driver": {"firstName": "Filip", "lastName": "Falk", "shortName": "Fal Fi"},
+          "pools": {
+            "vinnare": {"odds": 800},
+            "V75": {"betDistribution": 1500}
+          },
+          "result": {"place": 2, "finishOrder": 2, "finalOdds": 8.0, "startNumber": 3}
+        },
+        {
+          "id": "2024-01-06_1_2_4",
+          "number": 4,
+          "postPosition": 4,
+          "distance": 2140,
+          "horse": {
+            "id": 204,
+            "name": "Struken Stina",
+            "age": 8,
+            "sex": "mare",
+            "shoes": {"reported": false},
+            "sulky": {"reported": false}
+          },
+          "driver": {"firstName": "Gunnar", "lastName": "Gren", "shortName": "Gre Gu"},
+          "pools": {
+            "vinnare": {},
+            "V75": {"betDistribution": 600}
+          },
+          "result": {}
+        }
+      ]
+    }
+  ]
+}
