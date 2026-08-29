@@ -22,94 +22,12 @@ from typing import Any
 import pandas as pd
 
 from atg_favorites.config import FINISHED_STATUSES, RACES_CSV, RAW_DIR
+from atg_favorites.extraction import is_scratched
+from atg_favorites.extraction import start_summary as _start_summary
+from atg_favorites.extraction import streck_pct as _streck_pct
+from atg_favorites.extraction import shoe as _shoe  # noqa: F401 - re-exported for tests
 
 logger = logging.getLogger(__name__)
-
-
-def _streck_pct(start: dict[str, Any], pool_key: str) -> float | None:
-    pool = (start.get("pools") or {}).get(pool_key) or {}
-    bet_distribution = pool.get("betDistribution")
-    return None if bet_distribution is None else bet_distribution / 100.0
-
-
-def _final_odds(start: dict[str, Any]) -> float | None:
-    result = start.get("result") or {}
-    if result.get("finalOdds") is not None:
-        return float(result["finalOdds"])
-    vinnare = (start.get("pools") or {}).get("vinnare") or {}
-    odds = vinnare.get("odds")
-    return None if odds is None else odds / 100.0
-
-
-def _shoe(horse: dict[str, Any], position: str, key: str) -> bool | None:
-    shoes = horse.get("shoes") or {}
-    if not shoes.get("reported"):
-        return None
-    part = shoes.get(position) or {}
-    return part.get(key)
-
-
-def _sulky_type(horse: dict[str, Any]) -> str | None:
-    sulky = horse.get("sulky") or {}
-    if not sulky.get("reported"):
-        return None
-    return (sulky.get("type") or {}).get("code")
-
-
-def _driver_name(start: dict[str, Any]) -> str | None:
-    driver = start.get("driver") or {}
-    return driver.get("shortName") or _full_name(driver)
-
-
-def _trainer_name(horse: dict[str, Any]) -> str | None:
-    trainer = horse.get("trainer") or {}
-    return trainer.get("shortName") or _full_name(trainer)
-
-
-def _full_name(person: dict[str, Any]) -> str | None:
-    first, last = person.get("firstName"), person.get("lastName")
-    if not first and not last:
-        return None
-    return " ".join(part for part in (first, last) if part)
-
-
-def is_scratched(start: dict[str, Any], race: dict[str, Any]) -> bool:
-    scratchings = (race.get("result") or {}).get("scratchings") or []
-    return start.get("number") in scratchings
-
-
-def _start_summary(start: dict[str, Any], race: dict[str, Any], pool_key: str) -> dict[str, Any]:
-    horse = start.get("horse") or {}
-    result = start.get("result") or {}
-    race_distance = race.get("distance")
-    start_distance = start.get("distance")
-    added_distance = (
-        start_distance - race_distance
-        if start_distance is not None and race_distance is not None
-        else None
-    )
-    return {
-        "number": start.get("number"),
-        "post_position": start.get("postPosition"),
-        "horse_id": horse.get("id"),
-        "horse_name": horse.get("name"),
-        "horse_age": horse.get("age"),
-        "horse_sex": horse.get("sex"),
-        "driver_name": _driver_name(start),
-        "trainer_name": _trainer_name(horse),
-        "streck_pct": _streck_pct(start, pool_key),
-        "added_distance_m": added_distance,
-        "shoes_front": _shoe(horse, "front", "hasShoe"),
-        "shoes_back": _shoe(horse, "back", "hasShoe"),
-        "shoes_changed": _shoe(horse, "front", "changed") or _shoe(horse, "back", "changed"),
-        "sulky_type": _sulky_type(horse),
-        "final_odds": _final_odds(start),
-        "place": result.get("place"),
-        "finish_order": result.get("finishOrder"),
-        "galloped": result.get("galloped", False),
-        "disqualified": result.get("disqualified", False),
-        "scratched": is_scratched(start, race),
-    }
 
 
 def flatten_race(race: dict[str, Any], game: dict[str, Any]) -> dict[str, Any] | None:
@@ -168,6 +86,11 @@ def flatten_race(race: dict[str, Any], game: dict[str, Any]) -> dict[str, Any] |
         "favorite_shoes_changed": favorite["shoes_changed"],
         "favorite_sulky_type": favorite["sulky_type"],
         "favorite_final_odds": favorite["final_odds"],
+        "favorite_record_time": favorite["record_time"],
+        "favorite_life_starts": favorite["life_starts"],
+        "favorite_life_win_pct": favorite["life_win_pct"],
+        "favorite_driver_win_pct": favorite["driver_win_pct"],
+        "favorite_trainer_win_pct": favorite["trainer_win_pct"],
         "favorite_place": favorite["place"],
         "favorite_finish_order": favorite["finish_order"],
         "favorite_galloped": favorite["galloped"],
@@ -249,6 +172,11 @@ def build_dataframe(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
         "favorite_shoes_changed",
         "favorite_sulky_type",
         "favorite_final_odds",
+        "favorite_record_time",
+        "favorite_life_starts",
+        "favorite_life_win_pct",
+        "favorite_driver_win_pct",
+        "favorite_trainer_win_pct",
         "favorite_place",
         "favorite_finish_order",
         "favorite_galloped",

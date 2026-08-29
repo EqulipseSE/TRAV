@@ -71,13 +71,44 @@ Resultatet skrivs till `data/processed/favorite_bucket_analysis.csv`, och
 kraftiga favoritfall (stark favorit som ändå förlorar) skrivs till
 `data/processed/favorite_surprises.csv`.
 
-### 4. Streamlit-sida
+### 4. Streamlit-sidor
 
-`streamlit_app/app.py` läser `data/processed/races.csv` och låter dig
-filtrera omgångarna (spelform, bana, datum, antal startande, favoritens
-streckprocent, skor) samt justera streck-gruppernas bredd och se
-favoritfall-analysen och en stapeldiagram-jämförelse live på det filtrerade
-urvalet.
+Appen är en Streamlit-app i två sidor:
+
+* **`streamlit_app/app.py`** - läser `data/processed/races.csv` och låter dig
+  filtrera omgångarna (spelform, bana, datum, antal startande, favoritens
+  streckprocent, skor) samt justera streck-gruppernas bredd och se
+  favoritfall-analysen och en stapeldiagram-jämförelse live på det
+  filtrerade urvalet.
+* **`streamlit_app/pages/1_Analysera_lopp.py` ("Analysera lopp")** - skicka
+  in dagens (eller valfri annan) omgång, **avdelning för avdelning**: välj
+  datum, spelform, omgång och avdelningsnummer i sidopanelen, klicka
+  "Analysera avdelning" och få en grundlig genomgång av alla startande
+  (streck, spår, tillägg, skor, sulky, kusk/tränare, hästens
+  livstidsstatistik och rekord) plus en jämförelse mot liknande historiska
+  lopp i arkivet (samma bana/distans/startsätt/fältstorlek - eller en
+  bredare, "annat relevant", jämförelse om det exakta underlaget är för
+  litet). Fungerar för kommande, spelbara, pågående och redan avgjorda lopp
+  eftersom loppet hämtas live från ATG.
+
+### 5. Analysera en enskild avdelning (utan Streamlit)
+
+Samma live-analys som Streamlit-sidan ovan finns även som CLI, för
+skriptning/terminalbruk:
+
+```bash
+python -m atg_favorites.leg_analysis --date 2026-08-29 --avd 5 --game-type V85
+# eller via det samlade CLI:t
+python -m atg_favorites.cli analyze-leg --date 2026-08-29 --avd 5 --game-type V85
+```
+
+`--avd` räknas 1-baserat *inom omgången* (dvs. ben/avdelning 1-7 för V75,
+1-8 för V85, 1-6 för V86) - inte samma som banans ordinarie loppnummer.
+Ange `--track <bana>` om flera omgångar samma dag annars skulle matcha.
+Om matchningen mot exakt bana/distans/startsätt/fältstorlek ger för få
+historiska lopp (standard: färre än 8) relaxas kriterierna stegvis,
+tydligt redovisat i utskriften, så att analysen alltid baseras på det mest
+relevanta tillgängliga underlaget.
 
 ## Installation
 
@@ -122,6 +153,15 @@ python -m atg_favorites.flatten
 python -m atg_favorites.flatten --raw-dir data/raw --out data/processed/races.csv
 ```
 
+### Hur mycket data finns inläst?
+
+```bash
+python -m atg_favorites.cli status
+```
+
+Skriver ut antal rå-omgångar i `data/raw/`, antal lopp i `data/processed/races.csv`,
+uppdelning per spelform och vilket datumintervall arkivet täcker.
+
 ### Kör favoritfall-analysen
 
 ```bash
@@ -140,29 +180,41 @@ python -m atg_favorites.cli pipeline --days-back 30 --by-game-type
 
 eller styckvis: `python -m atg_favorites.cli fetch|flatten|analyze [...]`.
 
-### Streamlit-sidan
+### Streamlit-sidorna
 
 ```bash
 streamlit run streamlit_app/app.py
 ```
 
-Öppna länken som skrivs ut (normalt `http://localhost:8501`). Sidan läser
-`data/processed/races.csv` som standard - kör fetch + flatten först (se
-ovan) om filen inte finns än. Sökvägen till CSV:n kan även ändras direkt i
-sidopanelen.
+Öppna länken som skrivs ut (normalt `http://localhost:8501`). Sidnavigeringen
+i sidopanelen visar två sidor:
+
+* **app** - filtrera de historiska omgångarna/streck-grupperna. Läser
+  `data/processed/races.csv` som standard - kör fetch + flatten först (se
+  ovan) om filen inte finns än. Sökvägen till CSV:n kan även ändras direkt i
+  sidopanelen.
+* **Analysera lopp** - välj datum, spelform, omgång och avdelning och
+  klicka "Analysera avdelning" för en live-analys av just den avdelningen
+  jämfört med liknande historiska lopp (se ovan). Kräver internetåtkomst
+  till `atg.se` (samma API som `fetch.py` använder) eftersom loppet hämtas
+  live, men den historiska jämförelsen använder samma lokala
+  `races.csv`-arkiv.
 
 ## Projektstruktur
 
 ```
 atg_favorites/
-  api_client.py   HTTP-klient mot ATG:s racinginfo-API (med retry/backoff)
-  config.py       Sökvägar, endpoints, konstanter (spelformer, bucket-gränser m.m.)
-  fetch.py        Hämtar avgjorda omgångar -> data/raw/*.json
-  flatten.py      Rå-JSON -> en rad per lopp -> data/processed/races.csv
-  analysis.py     Streckjusterad favoritfall-analys, bucketgruppering
-  cli.py          Samlat CLI: fetch / flatten / analyze / pipeline
+  api_client.py    HTTP-klient mot ATG:s racinginfo-API (med retry/backoff)
+  config.py        Sökvägar, endpoints, konstanter (spelformer, bucket-gränser m.m.)
+  extraction.py     Delad logik för att platta ut en startande häst (streck, skor, sulky, statistik m.m.)
+  fetch.py         Hämtar avgjorda omgångar -> data/raw/*.json
+  flatten.py       Rå-JSON -> en rad per lopp -> data/processed/races.csv
+  analysis.py      Streckjusterad favoritfall-analys, bucketgruppering
+  leg_analysis.py  Live-analys av en enskild avdelning + jämförelse mot liknande historiska lopp
+  cli.py           Samlat CLI: fetch / flatten / analyze / analyze-leg / pipeline
 streamlit_app/
-  app.py          Streamlit-sida för att filtrera omgångar och streckgrupper
+  app.py                        Streamlit-sida för att filtrera omgångar och streckgrupper
+  pages/1_Analysera_lopp.py     Streamlit-sida för att analysera en avdelning i taget
 data/
   raw/            Rå-JSON per omgång (skapas av fetch.py, ej incheckad)
   processed/      Genererade CSV:er (skapas av flatten.py/analysis.py, ej incheckade)
