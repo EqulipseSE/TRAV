@@ -2,8 +2,9 @@
 
 Väljer man datum, spelform, omgång och avdelning hämtas loppet live från
 ATG (fungerar för kommande, spelbara, pågående och redan avgjorda lopp) och
-jämförs mot liknande historiska lopp i det lokala arkivet
-(``data/processed/races.csv``).
+jämförs mot jämförelselopp i det lokala rå-arkivet (``data/raw``) - hårda
+villkor (hästtyp/köns­restriktion/körsätt) och stegvis uppslappnade mjuka
+villkor (bana/distans/klass/startmetod), se ``leg_analysis.py``.
 """
 
 from __future__ import annotations
@@ -16,8 +17,9 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from atg_favorites import favorite_model, leg_analysis  # noqa: E402
 from atg_favorites.api_client import AtgApiError, AtgClient  # noqa: E402
-from atg_favorites.config import GAME_TYPES, RACES_CSV  # noqa: E402
+from atg_favorites.config import GAME_TYPES, RAW_DIR  # noqa: E402
 from atg_favorites.leg_analysis import LegNotFoundError, build_leg_report  # noqa: E402
 
 st.set_page_config(page_title="Analysera avdelning", page_icon="🔎", layout="wide")
@@ -26,6 +28,24 @@ st.set_page_config(page_title="Analysera avdelning", page_icon="🔎", layout="w
 @st.cache_resource
 def get_client() -> AtgClient:
     return AtgClient(request_delay=0.2)
+
+
+@st.cache_resource
+def get_comparison_pool(raw_dir: str):
+    """Bygg jämförelselopps-poolen (data/raw) en gång per session (cachad)."""
+    return leg_analysis.build_comparison_pool(Path(raw_dir))
+
+
+@st.cache_resource
+def get_favorite_model(raw_dir: str):
+    """Train the favoritfall-modellen once per session (cached)."""
+    dataset = favorite_model.build_start_dataset(Path(raw_dir))
+    if dataset.empty or dataset["won"].nunique() < 2:
+        return None
+    train_df, _ = favorite_model.time_split(dataset)
+    if train_df.empty or train_df["won"].nunique() < 2:
+        return None
+    return favorite_model.train_model(train_df)
 
 
 @st.cache_data(ttl=30, show_spinner="Hämtar dagens kalender från ATG...")
@@ -37,8 +57,8 @@ st.title("🔎 Analysera en avdelning")
 st.caption(
     "Skicka in dagens (eller valfri annan) omgång, avdelning för avdelning, och få en "
     "grundlig analys: streckprocent, spår, tillägg, skor m.m. för alla startande, samt hur "
-    "favoriten historiskt klarat sig i liknande lopp (samma bana/distans/startsätt/fältstorlek, "
-    "eller annat relevant om underlaget är för litet)."
+    "favoriten klarat sig i jämförelselopp - hästtyp/köns­restriktion/körsätt matchas alltid "
+    "exakt, övriga villkor (bana/distans/klass) släpps stegvis om underlaget är för litet."
 )
 
 st.sidebar.header("Välj lopp")
@@ -68,9 +88,7 @@ num_legs = len(game_summary.get("races", [])) or 1
 avd = st.sidebar.number_input("Avdelning", min_value=1, max_value=num_legs, value=1, step=1)
 
 with st.sidebar.expander("Avancerat"):
-    races_csv_path = st.text_input("Sökväg till historisk races.csv", value=str(RACES_CSV))
-    distance_tolerance = st.number_input("Distanstolerans (m)", min_value=0, value=150, step=25)
-    field_size_tolerance = st.number_input("Fältstorlekstolerans", min_value=0, value=2, step=1)
+    raw_dir_path = st.text_input("Sökväg till rå-JSON (data/raw)", value=str(RAW_DIR))
 
 analyze_clicked = st.sidebar.button("Analysera avdelning", type="primary", use_container_width=True)
 
@@ -80,14 +98,14 @@ if not analyze_clicked:
 
 try:
     with st.spinner(f"Hämtar och analyserar {game_type} avd {avd}..."):
+        comparison_pool = get_comparison_pool(raw_dir_path)
         report = build_leg_report(
-            Path(races_csv_path),
+            Path(raw_dir_path),
             date_str=date_str,
             avd=int(avd),
             game_type=game_type,
             client=get_client(),
-            distance_tolerance=int(distance_tolerance),
-            field_size_tolerance=int(field_size_tolerance),
+            pool=comparison_pool,
         )
 except LegNotFoundError as exc:
     st.error(str(exc))
@@ -140,27 +158,79 @@ if report.favorite:
 else:
     st.warning("Kunde inte avgöra favorit (ingen streckdata ännu).")
 
-st.markdown("### Liknande historiska lopp")
-st.caption(f"Matchningskriterier som användes: {report.similarity_description}")
+st.markdown("### Favoritfall-modellen: värdespel bland icke-favoriter")
+model = get_favorite_model(raw_dir_path)
+if model is None:
+    st.info(
+        "Ingen tränad favoritfall-modell tillgänglig än (för lite historik i "
+        f"`{raw_dir_path}`). Kör `python -m atg_favorites.fetch` för att bygga upp arkivet."
+    )
+else:
+    scored = favorite_model.score_leg(model, report.starters, race)
+    if scored.empty:
+        st.info("Kunde inte skatta modellen för denna avdelning (ingen streckdata).")
+    else:
+        fav_row = scored.loc[scored["streck_pct"].idxmax()]
+        favoritfall_prob = 1 - fav_row["model_prob"]
+        cols = st.columns(2)
+        cols[0].metric("Modellens skattning för favoriten", f"{fav_row['model_prob'] * 100:.1f}%")
+        cols[1].metric("Modellens favoritfall-sannolikhet", f"{favoritfall_prob * 100:.1f}%")
 
+        picks = favorite_model.top_value_non_favorites(scored, top_n=3)
+        st.caption(
+            "De tre icke-favoriter modellen värderar högst relativt sin egen streckprocent "
+            "(`value_ratio` = modellens sannolikhet delat med streckimplicerad sannolikhet)."
+        )
+        picks_display = picks[["number", "horse_name", "streck_pct", "model_prob", "value_ratio"]].rename(
+            columns={
+                "number": "Nr",
+                "horse_name": "Häst",
+                "streck_pct": "Streck %",
+                "model_prob": "Modell %",
+                "value_ratio": "Value (x streck)",
+            }
+        )
+        picks_display["Modell %"] = (picks_display["Modell %"] * 100).round(1)
+        picks_display["Value (x streck)"] = picks_display["Value (x streck)"].round(2)
+        st.dataframe(picks_display, use_container_width=True, hide_index=True)
+
+st.markdown("### Jämförelselopp")
 stats = report.similarity_stats
-if stats.get("races"):
-    cols = st.columns(4)
-    cols[0].metric("Liknande lopp", stats["races"])
-    cols[1].metric("Favoritens vinstfrekvens", f"{stats['favorite_win_rate'] * 100:.1f}%")
-    cols[2].metric("Favoritens topp-3-frekvens", f"{stats['favorite_top3_rate'] * 100:.1f}%")
-    cols[3].metric("Favoritfall-frekvens", f"{stats['favoritfall_rate'] * 100:.1f}%")
 
-    if "close_streck_band_win_rate" in stats:
-        st.info(
-            f"Bland de {stats['close_streck_band_races']} liknande loppen där favoriten hade "
-            f"ungefär samma streckprocent (±10 %-enheter) som i det aktuella loppet vann favoriten "
-            f"{stats['close_streck_band_win_rate'] * 100:.1f}% - en edge på "
-            f"{stats['close_streck_band_edge_vs_streck'] * 100:+.1f} %-enheter jämfört med vad "
-            f"streckprocenten implicerar."
+st.caption(
+    "Villkor som användes (hästtyp/köns­restriktion/körsätt matchas alltid exakt): "
+    f"**{stats.get('description', report.similarity_description)}**"
+)
+
+if stats.get("n", 0) == 0:
+    st.info(
+        "Inget historiskt underlag hittades ännu. Kör `python -m atg_favorites.fetch` för att "
+        "bygga upp arkivet i `data/raw`."
+    )
+elif stats["display"] == "insufficient":
+    st.warning(f"Otillräckligt underlag (n={stats['n']}) - ingen procentsiffra visas.")
+else:
+    if stats["display"] == "uncertain":
+        st.warning(f"⚠️ Osäkert underlag (n={stats['n']}, mellan 100 och 300 lopp) - tolka siffran med försiktighet.")
+    if stats.get("is_baseline"):
+        st.warning(
+            "Detta är en **global baslinje** (bucketerad enbart på favoritens streckprocent) - "
+            "inte lopptyps-matchade jämförelselopp, eftersom underlaget för de riktiga "
+            "hård-/mjuk-villkoren var för litet."
         )
 
-    with st.expander(f"Visa alla {len(report.similar_races)} liknande lopp"):
+    cols = st.columns(3)
+    cols[0].metric(
+        "Favoritens vinstfrekvens",
+        f"{stats['win_rate'] * 100:.1f}%",
+        help=f"95% konfidensintervall: {stats['ci_low'] * 100:.1f}-{stats['ci_high'] * 100:.1f}%",
+    )
+    if stats.get("top3_rate") is not None:
+        cols[1].metric("Favoritens topp-3-frekvens", f"{stats['top3_rate'] * 100:.1f}%")
+    cols[2].metric("n (jämförelselopp)", stats["n"])
+    st.caption(f"95% konfidensintervall för vinstfrekvensen: {stats['ci_low'] * 100:.1f}-{stats['ci_high'] * 100:.1f}%")
+
+    with st.expander(f"Visa alla {len(report.similar_races)} jämförelselopp"):
         show_cols = [
             c
             for c in (
@@ -168,7 +238,9 @@ if stats.get("races"):
                 "track_name",
                 "race_distance_m",
                 "start_method",
-                "num_starters",
+                "sport",
+                "is_coldblood",
+                "is_mare_race",
                 "favorite_horse_name",
                 "favorite_streck_pct",
                 "favorite_won",
@@ -183,11 +255,5 @@ if stats.get("races"):
         )
 
     if not report.favoritfall_examples.empty:
-        st.markdown("#### Tidigare favoritfall i liknande lopp")
+        st.markdown("#### Tidigare favoritfall bland jämförelselopp")
         st.dataframe(report.favoritfall_examples, use_container_width=True, hide_index=True)
-else:
-    st.info(
-        "Inget historiskt underlag hittades ännu. Kör `python -m atg_favorites.fetch` och "
-        "`python -m atg_favorites.flatten` för att bygga upp arkivet - ju mer historik, desto "
-        "bättre analys."
-    )

@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +53,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from atg_favorites.api_client import AtgApiError, AtgClient
 from atg_favorites.config import FINISHED_STATUSES, GAME_TYPES, RAW_DIR
-from atg_favorites.extraction import start_summary
+from atg_favorites.extraction import parse_race_class, start_summary
 from atg_favorites.flatten import load_raw_games
 from atg_favorites.leg_analysis import find_candidate_games, leg_starters, resolve_leg
 
@@ -77,50 +76,6 @@ ALL_FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES + BOOLEAN_FEATURES
 #: Default validation window: the most recent 12 months ("senaste 12 månaderna").
 DEFAULT_VALIDATION_DAYS = 365
 DEFAULT_MIN_TRAINING_ROWS = 200
-
-_MARE_RE = re.compile(r"\bston\b", re.IGNORECASE)
-_COLDBLOOD_RE = re.compile(r"kallblod", re.IGNORECASE)
-_PRIZE_RANGE_RE = re.compile(r"(\d[\d.]*)\s*-\s*(\d[\d.]*)\s*kr")
-_PRIZE_MIN_RE = re.compile(r"lägst\s+(\d[\d.]*)\s*kr", re.IGNORECASE)
-_PRIZE_MAX_RE = re.compile(r"högst\s+(\d[\d.]*)\s*kr", re.IGNORECASE)
-
-
-def _parse_sek(text: str) -> float | None:
-    try:
-        return float(text.replace(".", ""))
-    except ValueError:  # pragma: no cover - defensive
-        return None
-
-
-def parse_race_class(terms: list[str] | None) -> dict[str, Any]:
-    """Parse loppklass (prissumma, sto-/kallblodslopp) out of ``race['terms']``.
-
-    ``terms`` is the list of free-text Swedish condition strings ATG attaches
-    to each race, e.g. ``"3-åriga och äldre ston 300.001 - 1.950.000 kr. ..."``.
-    """
-    text = " ".join(terms or [])
-
-    prize_low: float | None = None
-    prize_high: float | None = None
-
-    range_match = _PRIZE_RANGE_RE.search(text)
-    if range_match:
-        prize_low = _parse_sek(range_match.group(1))
-        prize_high = _parse_sek(range_match.group(2))
-    else:
-        min_match = _PRIZE_MIN_RE.search(text)
-        if min_match:
-            prize_low = _parse_sek(min_match.group(1))
-        max_match = _PRIZE_MAX_RE.search(text)
-        if max_match:
-            prize_high = _parse_sek(max_match.group(1))
-
-    return {
-        "prize_low": prize_low,
-        "prize_high": prize_high,
-        "is_mare_race": bool(_MARE_RE.search(text)),
-        "is_coldblood": bool(_COLDBLOOD_RE.search(text)),
-    }
 
 
 def compute_gap_to_rival(streck: pd.Series) -> pd.Series:

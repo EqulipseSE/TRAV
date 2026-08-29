@@ -95,6 +95,7 @@
       "distance": 2140,
       "startMethod": "volte",
       "scheduledStartTime": "2024-01-06T13:20:00",
+      "terms": ["3-åriga och äldre 100.001 - 300.000 kr. Körsvenskrav kat. 1."],
       "sport": "trot",
       "track": {"id": 1, "name": "Testbanan", "condition": "normal", "countryCode": "SE"},
       "status": "results",

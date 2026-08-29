@@ -129,13 +129,46 @@ Appen är en Streamlit-app i två sidor:
   datum, spelform, omgång och avdelningsnummer i sidopanelen, klicka
   "Analysera avdelning" och få en grundlig genomgång av alla startande
   (streck, spår, tillägg, skor, sulky, kusk/tränare, hästens
-  livstidsstatistik och rekord) plus en jämförelse mot liknande historiska
-  lopp i arkivet (samma bana/distans/startsätt/fältstorlek - eller en
-  bredare, "annat relevant", jämförelse om det exakta underlaget är för
-  litet). Fungerar för kommande, spelbara, pågående och redan avgjorda lopp
-  eftersom loppet hämtas live från ATG.
+  livstidsstatistik och rekord) plus favoritfall-modellens värdespel och en
+  jämförelse mot **jämförelselopp** (se nedan). Fungerar för kommande,
+  spelbara, pågående och redan avgjorda lopp eftersom loppet hämtas live
+  från ATG.
 
-### 5. Analysera en enskild avdelning (utan Streamlit)
+### 5. Urval av jämförelselopp
+
+Jämförelselopp väljs ur hela det lokala rå-arkivet (`data/raw/*.json`) i
+två steg:
+
+* **Hårda villkor** (parsas ur `race.terms`/`race.sport`, släpps ALDRIG,
+  oavsett hur få lopp som matchar): hästtyp (varmblod/kallblod),
+  köns­restriktion (sto-/öppet lopp) och körsätt (sulky/monté) måste
+  matcha exakt.
+* **Mjuka villkor**, uppslappnas stegvis tills minst 100 lopp hittas:
+
+  | Steg | Villkor |
+  |---|---|
+  | 0 | bana + distansgrupp (kort <1900m / medel / lång >=2200m) + klassgrupp (grovt bucketad prissumma) + startmetod |
+  | 1 | (bana släppt) distansgrupp + klassgrupp + startmetod |
+  | 2 | (+ klassgrupp släppt) distansgrupp + startmetod |
+  | 3 | (+ distansgrupp släppt) endast startmetod |
+
+  Startmetoden (volte/auto) släpps aldrig.
+* Ger även steg 3 (fortfarande inom de hårda villkoren) under 100 lopp,
+  faller urvalet tillbaka på en **global baslinje**: alla lopptyper,
+  bucketerad enbart på favoritens egen streckprocent - tydligt märkt som
+  baslinje.
+
+**Redovisning i gränssnittet/utskriften:**
+
+* Under 100 lopp: ingen procentsiffra, bara "otillräckligt underlag (n=X)".
+* 100-300 lopp: siffran visas med en tydlig "osäkert underlag"-varning samt
+  95%-konfidensintervall (Wilson score-intervall).
+* Över 300 lopp: siffran visas med n och konfidensintervall.
+* Villkoren som faktiskt användes visas alltid (t.ex. `"varmblod, öppet
+  lopp, sulkylopp, autostart, medel (1900-2199m), 100-300k kr, alla banor,
+  n=412"`), så det aldrig är dolt vad siffran bygger på.
+
+### 6. Analysera en enskild avdelning (utan Streamlit)
 
 Samma live-analys som Streamlit-sidan ovan finns även som CLI, för
 skriptning/terminalbruk:
@@ -149,10 +182,13 @@ python -m atg_favorites.cli analyze-leg --date 2026-08-29 --avd 5 --game-type V8
 `--avd` räknas 1-baserat *inom omgången* (dvs. ben/avdelning 1-7 för V75,
 1-8 för V85, 1-6 för V86) - inte samma som banans ordinarie loppnummer.
 Ange `--track <bana>` om flera omgångar samma dag annars skulle matcha.
-Om matchningen mot exakt bana/distans/startsätt/fältstorlek ger för få
-historiska lopp (standard: färre än 8) relaxas kriterierna stegvis,
-tydligt redovisat i utskriften, så att analysen alltid baseras på det mest
-relevanta tillgängliga underlaget.
+
+Utelämnas `--avd` visas istället en **breddningssammanfattning** för hela
+dagen - hur många avdelningar som hamnade på respektive urvalssteg:
+
+```bash
+python -m atg_favorites.leg_analysis --date 2026-08-29
+```
 
 ## Installation
 
@@ -239,10 +275,9 @@ i sidopanelen visar två sidor:
   sidopanelen.
 * **Analysera lopp** - välj datum, spelform, omgång och avdelning och
   klicka "Analysera avdelning" för en live-analys av just den avdelningen
-  jämfört med liknande historiska lopp (se ovan). Kräver internetåtkomst
-  till `atg.se` (samma API som `fetch.py` använder) eftersom loppet hämtas
-  live, men den historiska jämförelsen använder samma lokala
-  `races.csv`-arkiv.
+  jämfört med jämförelselopp (se ovan). Kräver internetåtkomst till
+  `atg.se` (samma API som `fetch.py` använder) eftersom loppet hämtas
+  live, men själva jämförelseurvalet bygger på det lokala `data/raw`-arkivet.
 
 ## Projektstruktur
 
@@ -255,7 +290,7 @@ atg_favorites/
   flatten.py       Rå-JSON -> en rad per lopp -> data/processed/races.csv
   analysis.py      Streckjusterad favoritfall-analys, bucketgruppering
   favorite_model.py Logistisk regressionsmodell för P(vinst) per häst, kalibrering, värdespel
-  leg_analysis.py  Live-analys av en enskild avdelning + jämförelse mot liknande historiska lopp
+  leg_analysis.py  Live-analys av en avdelning + urval av jämförelselopp (hårda/mjuka villkor, baslinje)
   cli.py           Samlat CLI: fetch / flatten / analyze / analyze-leg / favorite-model / pipeline / status
 streamlit_app/
   app.py                        Streamlit-sida för att filtrera omgångar och streckgrupper
