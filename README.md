@@ -71,6 +71,50 @@ Resultatet skrivs till `data/processed/favorite_bucket_analysis.csv`, och
 kraftiga favoritfall (stark favorit som ändå förlorar) skrivs till
 `data/processed/favorite_surprises.csv`.
 
+### 3b. Favoritfall-modell (logistisk regression)
+
+`favorite_model.py` bygger ut bucket-uppslagningen ovan med en riktig
+prediktionsmodell: en **logistisk regression** tränad på **varje startande
+häst** (inte bara favoriten) i historiska avgjorda lopp, med målvariabeln
+"vann loppet" och features:
+
+* `streck_pct` - hästens streckprocent
+* `gap_to_rival` - marginal till mest relevanta rival (för favoriten:
+  avstånd ner till tvåan; för övriga: avstånd upp till ledaren)
+* `post_position` - startspår
+* `start_method` - startsätt (volte/auto)
+* `added_distance_m` - tillägg
+* `num_starters` - fältstorlek
+* `track_condition` - banförhållande
+* `shoes_changed` - skoändring
+* `barfota_back` - barfota bak
+* `driver_win_pct` - kuskens vinstprocent innevarande år
+* `prize_low` / `prize_high`, `is_mare_race`, `is_coldblood` - loppklass
+  (prissummeintervall, sto-/kallblodslopp), **parsad ur `race.terms`**
+
+Modellen tränas på data äldre än valideringsfönstret (`--validation-days`,
+standard 365 dagar = "senaste 12 månaderna") och **valideras på de senaste
+12 månaderna**, med **kalibrering** (förutsagd vs. faktisk vinstfrekvens
+per sannolikhetsbucket, plus log-loss/Brier score/ROC-AUC) redovisad på
+just den valideringsdatan - inte på träningsdatan.
+
+Eftersom modellen skattar P(vinst) för *varje* häst (inte bara favoriten)
+kan den även peka ut **icke-favoriter** där modellens skattning avviker
+mycket från streckprocenten. Kommandot listar därför, för varje avdelning
+i dagens (eller valfri annan dags) omgångar, de **tre icke-favoriter**
+vars modellskattade vinstsannolikhet (normaliserad över fältet) är högst
+*relativt deras egen streckprocent* (`value_ratio = model_prob / streck_pct`).
+
+```bash
+python -m atg_favorites.favorite_model --date 2026-08-29
+# eller via det samlade CLI:t
+python -m atg_favorites.cli favorite-model --validation-days 365 --date 2026-08-29
+```
+
+> Med bara några dagars historik i arkivet finns inte 12 månaders
+> träning/validering att dela upp - kör `fetch` över ett längre
+> datumintervall (se nedan) för en meningsfull modell och kalibrering.
+
 ### 4. Streamlit-sidor
 
 Appen är en Streamlit-app i två sidor:
@@ -210,8 +254,9 @@ atg_favorites/
   fetch.py         Hämtar avgjorda omgångar -> data/raw/*.json
   flatten.py       Rå-JSON -> en rad per lopp -> data/processed/races.csv
   analysis.py      Streckjusterad favoritfall-analys, bucketgruppering
+  favorite_model.py Logistisk regressionsmodell för P(vinst) per häst, kalibrering, värdespel
   leg_analysis.py  Live-analys av en enskild avdelning + jämförelse mot liknande historiska lopp
-  cli.py           Samlat CLI: fetch / flatten / analyze / analyze-leg / pipeline
+  cli.py           Samlat CLI: fetch / flatten / analyze / analyze-leg / favorite-model / pipeline / status
 streamlit_app/
   app.py                        Streamlit-sida för att filtrera omgångar och streckgrupper
   pages/1_Analysera_lopp.py     Streamlit-sida för att analysera en avdelning i taget
@@ -219,7 +264,8 @@ data/
   raw/            Rå-JSON per omgång (skapas av fetch.py, ej incheckad)
   processed/      Genererade CSV:er (skapas av flatten.py/analysis.py, ej incheckade)
 tests/
-  test_flatten.py, test_analysis.py, fixtures/sample_game.json
+  test_flatten.py, test_analysis.py, test_leg_analysis.py, test_favorite_model.py,
+  fixtures/sample_game.json
 ```
 
 ## Tester

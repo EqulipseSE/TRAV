@@ -5,12 +5,16 @@
     python -m atg_favorites.cli analyze --by-game-type
     python -m atg_favorites.cli pipeline --days-back 14 --by-game-type
     python -m atg_favorites.cli analyze-leg --date 2026-08-29 --avd 5 --game-type V85
+    python -m atg_favorites.cli favorite-model --validation-days 365 --date 2026-08-29
 
 ``pipeline`` simply runs fetch -> flatten -> analyze in sequence with shared
 defaults, which is the easiest way to go from nothing to a fresh analysis.
 ``analyze-leg`` fetches one specific avdelning (leg) live - upcoming,
 bettable, ongoing or already finished - and compares it against similar
-historical races in ``races.csv``.
+historical races in ``races.csv``. ``favorite-model`` trains the streck-
+adjusted logistic-regression favoritfall-model, reports its calibration on
+the last 12 months, and lists the top-3 value non-favorites for every
+avdelning today.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from atg_favorites import analysis, fetch, flatten, leg_analysis
+from atg_favorites import analysis, favorite_model, fetch, flatten, leg_analysis
 from atg_favorites.config import GAME_TYPES, RACES_CSV, RAW_DIR
 
 logger = logging.getLogger(__name__)
@@ -73,6 +77,17 @@ def main(argv: list[str] | None = None) -> None:
     status_p = sub.add_parser("status", help="Visa hur mycket historisk data som finns inläst.")
     status_p.add_argument("--races-csv", type=str, default=str(RACES_CSV))
     status_p.add_argument("--raw-dir", type=str, default=str(RAW_DIR))
+
+    model_p = sub.add_parser(
+        "favorite-model",
+        help="Träna/validera favoritfall-modellen (logistisk regression) och visa dagens värdespel.",
+    )
+    model_p.add_argument("--raw-dir", type=str, default=str(RAW_DIR))
+    model_p.add_argument("--validation-days", type=int, default=favorite_model.DEFAULT_VALIDATION_DAYS)
+    model_p.add_argument("--bins", type=int, default=10)
+    model_p.add_argument("--date", type=str, default=None, help="YYYY-MM-DD, default: idag.")
+    model_p.add_argument("--game-type", choices=list(GAME_TYPES), default=None)
+    model_p.add_argument("--skip-today", action="store_true")
 
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -152,6 +167,42 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(f"Rå-omgångar i {raw_dir}: {num_raw_games}")
             print(f"Ingen {races_csv} hittad än - kör `python -m atg_favorites.flatten` först.")
+    elif args.command == "favorite-model":
+        from atg_favorites.api_client import AtgClient
+
+        dataset = favorite_model.build_start_dataset(Path(args.raw_dir))
+        if dataset.empty:
+            logger.warning("Inga startande hittades i %s - kör fetch/flatten först.", args.raw_dir)
+            return
+
+        train_df, validation_df = favorite_model.time_split(dataset, validation_days=args.validation_days)
+        logger.info(
+            "Träningsdata: %d startande, valideringsdata (senaste %d dagarna): %d startande",
+            len(train_df),
+            args.validation_days,
+            len(validation_df),
+        )
+        if train_df.empty or train_df["won"].nunique() < 2:
+            logger.error("Kan inte träna: ingen (eller endimensionell) träningsdata äldre än valideringsfönstret.")
+            return
+
+        model = favorite_model.train_model(train_df)
+
+        if not validation_df.empty and validation_df["won"].nunique() > 1:
+            logger.info("Valideringsmått: %s", favorite_model.evaluate(model, validation_df))
+            print("Kalibrering på valideringsdata (senaste 12 månaderna):")
+            print(
+                favorite_model.format_calibration_table(
+                    favorite_model.calibration_table(model, validation_df, n_bins=args.bins)
+                )
+            )
+        else:
+            logger.warning("Inget (eller endimensionellt) valideringsunderlag - kalibrering kan inte redovisas.")
+
+        if not args.skip_today:
+            date_str = args.date or date.today().isoformat()
+            print()
+            print(favorite_model.format_value_picks(AtgClient(), date_str, model, game_type=args.game_type))
     else:  # pragma: no cover - argparse enforces valid subcommands
         parser.print_help(sys.stderr)
         sys.exit(1)
