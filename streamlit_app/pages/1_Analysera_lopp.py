@@ -16,8 +16,9 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from atg_favorites import favorite_model  # noqa: E402
 from atg_favorites.api_client import AtgApiError, AtgClient  # noqa: E402
-from atg_favorites.config import GAME_TYPES, RACES_CSV  # noqa: E402
+from atg_favorites.config import GAME_TYPES, RACES_CSV, RAW_DIR  # noqa: E402
 from atg_favorites.leg_analysis import LegNotFoundError, build_leg_report  # noqa: E402
 
 st.set_page_config(page_title="Analysera avdelning", page_icon="🔎", layout="wide")
@@ -26,6 +27,18 @@ st.set_page_config(page_title="Analysera avdelning", page_icon="🔎", layout="w
 @st.cache_resource
 def get_client() -> AtgClient:
     return AtgClient(request_delay=0.2)
+
+
+@st.cache_resource
+def get_favorite_model(raw_dir: str):
+    """Train the favoritfall-modellen once per session (cached)."""
+    dataset = favorite_model.build_start_dataset(Path(raw_dir))
+    if dataset.empty or dataset["won"].nunique() < 2:
+        return None
+    train_df, _ = favorite_model.time_split(dataset)
+    if train_df.empty or train_df["won"].nunique() < 2:
+        return None
+    return favorite_model.train_model(train_df)
 
 
 @st.cache_data(ttl=30, show_spinner="Hämtar dagens kalender från ATG...")
@@ -69,6 +82,7 @@ avd = st.sidebar.number_input("Avdelning", min_value=1, max_value=num_legs, valu
 
 with st.sidebar.expander("Avancerat"):
     races_csv_path = st.text_input("Sökväg till historisk races.csv", value=str(RACES_CSV))
+    raw_dir_path = st.text_input("Sökväg till rå-JSON (data/raw)", value=str(RAW_DIR))
     distance_tolerance = st.number_input("Distanstolerans (m)", min_value=0, value=150, step=25)
     field_size_tolerance = st.number_input("Fältstorlekstolerans", min_value=0, value=2, step=1)
 
@@ -139,6 +153,42 @@ if report.favorite:
     )
 else:
     st.warning("Kunde inte avgöra favorit (ingen streckdata ännu).")
+
+st.markdown("### Favoritfall-modellen: värdespel bland icke-favoriter")
+model = get_favorite_model(raw_dir_path)
+if model is None:
+    st.info(
+        "Ingen tränad favoritfall-modell tillgänglig än (för lite historik i "
+        f"`{raw_dir_path}`). Kör `python -m atg_favorites.fetch` för att bygga upp arkivet."
+    )
+else:
+    scored = favorite_model.score_leg(model, report.starters, race)
+    if scored.empty:
+        st.info("Kunde inte skatta modellen för denna avdelning (ingen streckdata).")
+    else:
+        fav_row = scored.loc[scored["streck_pct"].idxmax()]
+        favoritfall_prob = 1 - fav_row["model_prob"]
+        cols = st.columns(2)
+        cols[0].metric("Modellens skattning för favoriten", f"{fav_row['model_prob'] * 100:.1f}%")
+        cols[1].metric("Modellens favoritfall-sannolikhet", f"{favoritfall_prob * 100:.1f}%")
+
+        picks = favorite_model.top_value_non_favorites(scored, top_n=3)
+        st.caption(
+            "De tre icke-favoriter modellen värderar högst relativt sin egen streckprocent "
+            "(`value_ratio` = modellens sannolikhet delat med streckimplicerad sannolikhet)."
+        )
+        picks_display = picks[["number", "horse_name", "streck_pct", "model_prob", "value_ratio"]].rename(
+            columns={
+                "number": "Nr",
+                "horse_name": "Häst",
+                "streck_pct": "Streck %",
+                "model_prob": "Modell %",
+                "value_ratio": "Value (x streck)",
+            }
+        )
+        picks_display["Modell %"] = (picks_display["Modell %"] * 100).round(1)
+        picks_display["Value (x streck)"] = picks_display["Value (x streck)"].round(2)
+        st.dataframe(picks_display, use_container_width=True, hide_index=True)
 
 st.markdown("### Liknande historiska lopp")
 st.caption(f"Matchningskriterier som användes: {report.similarity_description}")
